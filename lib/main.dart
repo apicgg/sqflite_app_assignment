@@ -1,115 +1,244 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart';
+import 'package:sqflite/sqflite.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // Try running your application with "flutter run". You'll see the
-        // application has a blue toolbar. Then, without quitting the app, try
-        // changing the primarySwatch below to Colors.green and then invoke
-        // "hot reload" (press "r" in the console where you ran "flutter run",
-        // or simply save your changes to "hot reload" in a Flutter IDE).
-        // Notice that the counter didn't reset back to zero; the application
-        // is not restarted.
-        primarySwatch: Colors.blue,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Flutter Sqflite Demo',
+      home: HomePage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
+class HomePage extends StatefulWidget {
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  _HomePageState createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _HomePageState extends State<HomePage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _ageController = TextEditingController();
 
-  void _incrementCounter() {
+  late Database _database;
+  List<Map<String, dynamic>> _persons = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _initDatabase();
+  }
+
+  void _initDatabase() async {
+    _database = await openDatabase(
+      join(await getDatabasesPath(), 'person_database.db'),
+      onCreate: (db, version) {
+        return db.execute(
+          'CREATE TABLE persons(id INTEGER PRIMARY KEY, name TEXT, age INTEGER)',
+        );
+      },
+      version: 1,
+    );
+
+    _refreshPersons();
+  }
+
+  void _refreshPersons() async {
+    final persons = await _database.query('persons');
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      _persons = persons;
     });
+  }
+
+  void _insertPerson(String name, int age) async {
+    await _database.insert(
+      'persons',
+      {'name': name, 'age': age},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    _refreshPersons();
+  }
+
+  void _updatePerson(int id, String name, int age) async {
+    await _database.update(
+      'persons',
+      {'name': name, 'age': age},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    _refreshPersons();
+  }
+
+  void _deletePerson(int id) async {
+    await _database.delete(
+      'persons',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    _refreshPersons();
+  }
+
+  @override
+  void dispose() {
+    _database.close();
+    _nameController.dispose();
+    _ageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       appBar: AppBar(
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: Text('Flutter Sqflite Demo'),
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Invoke "debug painting" (press "p" in the console, choose the
-          // "Toggle Debug Paint" action from the Flutter Inspector in Android
-          // Studio, or the "Toggle Debug Paint" command in Visual Studio Code)
-          // to see the wireframe for each widget.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
+      body: Column(
+        children: [
+          Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Name',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter a name';
+                    }
+                    return null;
+                  },
+                ),
+                TextFormField(
+                  controller: _ageController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: 'Age',
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter an age';
+                    }
+                    return null;
+                  },
+                ),
+                SizedBox(height: 16),
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: () {
+                        if (_formKey.currentState!.validate()) {
+                          _insertPerson(
+                            _nameController.text,
+                            int.parse(_ageController.text),
+                          );
+                          _nameController.clear();
+                          _ageController.clear();
+                        }
+                      },
+                      child: Text('Add'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _persons.length,
+              itemBuilder: (context, index) {
+                final person = _persons[index];
+                return ListTile(
+                  title: Text(person['name']),
+                  subtitle: Text('${person['age']} years old'),
+                  trailing: IconButton(
+                    icon: Icon(Icons.delete),
+                    onPressed: () {
+                      _deletePerson(person['id']);
+                    },
+                  ),
+                  onTap: () async {
+                    final result = await showDialog(
+                      context: context,
+                      builder: (context) {
+                        final nameController =
+                            TextEditingController(text: person['name']);
+                        final ageController = TextEditingController(
+                            text: person['age'].toString());
+                        return AlertDialog(
+                          title: Text('Edit Person'),
+                          content: Form(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextFormField(
+                                  controller: nameController,
+                                  decoration: InputDecoration(
+                                    labelText: 'Name',
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter a name';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                TextFormField(
+                                  controller: ageController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    labelText: 'Age',
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter an age';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                              },
+                              child: Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                if (Form.of(context)!.validate()) {
+                                  _updatePerson(
+                                    person['id'],
+                                    nameController.text,
+                                    int.parse(ageController.text),
+                                  );
+                                  Navigator.pop(context, true);
+                                }
+                              },
+                              child: Text('Save'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                    if (result == true) {
+                      _refreshPersons();
+                    }
+                  },
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
